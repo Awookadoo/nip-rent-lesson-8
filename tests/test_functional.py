@@ -145,3 +145,56 @@ def test_transfer_valid_with_tenant_agreement():
     is_valid = manager.check_transfers_tenant()
     assert is_valid == False
 
+import pytest
+
+from src.manager import Manager
+from src.models import ApartmentEvent, Parameters
+
+
+def test_load_additional_data_reads_apartment_events():
+    parameters = Parameters()
+    manager = Manager(parameters)
+
+    assert manager.apartment_events == []
+
+    manager.load_additional_data()
+
+    assert isinstance(manager.apartment_events, list)
+    assert len(manager.apartment_events) == 3
+    assert all(isinstance(event, ApartmentEvent) for event in manager.apartment_events)
+    assert all(event.apartment == 'apart-polanka' for event in manager.apartment_events)
+
+
+def test_generate_apartment_events_report_only_unsolved_by_default():
+    manager = Manager(Parameters())
+    manager.apartment_events = [
+        ApartmentEvent(date='2024-06-01', apartment='apart-polanka', description='Fix light', solved=False),
+        ApartmentEvent(date='2024-06-02', apartment='apart-polanka', description='Replace lock', solved=True),
+        ApartmentEvent(date='2024-06-03', apartment='apart-other', description='Check wiring', solved=False),
+    ]
+
+    report = manager.generate_apartment_events_report('apart-polanka')
+
+    assert len(report) == 1
+    assert report[0].description == 'Fix light'
+    assert report[0].solved is False
+
+
+def test_generate_apartment_events_report_returns_all_when_only_unsolved_false():
+    manager = Manager(Parameters())
+    manager.apartment_events = [
+        ApartmentEvent(date='2024-06-01', apartment='apart-polanka', description='Fix light', solved=False),
+        ApartmentEvent(date='2024-06-02', apartment='apart-polanka', description='Replace lock', solved=True),
+    ]
+
+    report = manager.generate_apartment_events_report('apart-polanka', only_unsolved=False)
+
+    assert len(report) == 2
+    assert {event.solved for event in report} == {False, True}
+
+
+def test_generate_apartment_events_report_raises_for_unknown_apartment():
+    manager = Manager(Parameters())
+
+    with pytest.raises(ValueError, match='Apartment key does not exist'):
+        manager.generate_apartment_events_report('invalid-apartment')
